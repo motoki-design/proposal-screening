@@ -1,0 +1,903 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>公募案件スクリーニング｜エブリプラン</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Meiryo', 'Yu Gothic UI', 'Hiragino Sans', sans-serif;
+      background: #F0F2F5;
+      color: #333;
+      min-height: 100vh;
+    }
+
+    /* ── ヘッダー ── */
+    .header {
+      background: #37474F;
+      color: #fff;
+      padding: 14px 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+    }
+    .header h1 { font-size: 16px; font-weight: bold; letter-spacing: 0.05em; }
+    .header-right { display: flex; align-items: center; gap: 12px; }
+    .header-sub { font-size: 11px; opacity: 0.75; text-align: right; line-height: 1.6; }
+    .sheet-link {
+      display: inline-flex; align-items: center; gap: 6px;
+      background: #2E7D32; color: #fff; text-decoration: none;
+      font-size: 12px; font-weight: bold; white-space: nowrap;
+      padding: 6px 16px; border-radius: 4px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.25);
+      transition: background 0.15s;
+    }
+    .sheet-link:hover { background: #388E3C; }
+    .gantt-link {
+      display: inline-flex; align-items: center; gap: 6px;
+      background: #1A237E; color: #fff; text-decoration: none;
+      font-size: 12px; font-weight: bold; white-space: nowrap;
+      padding: 6px 16px; border-radius: 4px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.25);
+      transition: background 0.15s;
+    }
+    .gantt-link:hover { background: #283593; }
+
+    /* ── サマリーバー ── */
+    .summary-bar {
+      background: #fff;
+      border-bottom: 1px solid #DDE;
+      padding: 12px 24px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+    .summary-chip {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 6px 14px; border-radius: 20px;
+      font-size: 13px; font-weight: bold;
+      cursor: pointer;
+      transition: box-shadow 0.15s;
+    }
+    .summary-chip:hover { box-shadow: 0 2px 6px rgba(0,0,0,0.15); }
+    .summary-chip.active { box-shadow: 0 0 0 2px #333; }
+    .chip-undecided { background: #FFF3E0; color: #E65100; }
+    .chip-go { background: #E8F5E9; color: #2E7D32; }
+    .chip-skip { background: #F5F5F5; color: #757575; }
+    .chip-watch { background: #E3F2FD; color: #1565C0; }
+    .chip-all { background: #ECEFF1; color: #37474F; }
+    .chip-count { font-size: 18px; }
+
+    /* ── コントロールバー ── */
+    .controls {
+      background: #fff;
+      border-bottom: 1px solid #DDE;
+      padding: 10px 24px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      flex-wrap: wrap;
+    }
+    .controls label { font-size: 12px; color: #555; white-space: nowrap; }
+    .controls select {
+      font-size: 12px; padding: 4px 8px;
+      border: 1px solid #CCC; border-radius: 4px;
+      background: #fff;
+    }
+    .btn {
+      padding: 5px 14px;
+      background: #37474F; color: #fff;
+      border: none; border-radius: 4px;
+      cursor: pointer; font-size: 12px;
+      transition: background 0.15s;
+    }
+    .btn:hover { background: #455A64; }
+    .status-msg { font-size: 12px; color: #777; margin-left: auto; }
+
+    /* ── カード一覧 ── */
+    .card-container {
+      padding: 16px 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .card {
+      background: #fff;
+      border-radius: 8px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+      padding: 16px 20px;
+      border-left: 5px solid #CCC;
+      transition: box-shadow 0.15s;
+    }
+    .card:hover { box-shadow: 0 3px 12px rgba(0,0,0,0.15); }
+
+    .card-urgent    { background: #FFF0F0; border-left-color: #D32F2F; }
+    .card-undecided { background: #FFFDE7; border-left-color: #F9A825; }
+    .card-go        { background: #E8F5E9; border-left-color: #2E7D32; }
+    .card-skip      { background: #F5F5F5; border-left-color: #9E9E9E; }
+    .card-watch     { background: #E3F2FD; border-left-color: #1565C0; }
+
+    .card-header {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      margin-bottom: 8px;
+    }
+
+    .card-status {
+      display: inline-block;
+      padding: 2px 10px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: bold;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .status-urgent    { background: #D32F2F; color: #fff; }
+    .status-undecided { background: #F9A825; color: #fff; }
+    .status-go        { background: #2E7D32; color: #fff; }
+    .status-skip      { background: #9E9E9E; color: #fff; }
+    .status-watch     { background: #1565C0; color: #fff; }
+
+    .card-countdown {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: bold;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .countdown-urgent  { background: #FFCDD2; color: #B71C1C; }
+    .countdown-soon    { background: #FFF9C4; color: #F57F17; }
+    .countdown-ok      { background: #E0E0E0; color: #555; }
+    .countdown-expired { background: #B71C1C; color: #fff; }
+
+    .card-title {
+      font-size: 15px;
+      font-weight: bold;
+      color: #222;
+      flex: 1;
+      line-height: 1.4;
+    }
+    .card-title a { color: inherit; text-decoration: none; }
+    .card-title a:hover { text-decoration: underline; }
+
+    .card-meta {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      font-size: 12px;
+      color: #666;
+      margin-bottom: 8px;
+    }
+    .card-meta-item { display: inline-flex; align-items: center; gap: 4px; }
+    .card-amount { font-weight: bold; color: #333; }
+
+    .card-method {
+      display: inline-block;
+      padding: 1px 8px;
+      border-radius: 3px;
+      font-size: 11px;
+      font-weight: bold;
+    }
+    .method-proposal   { background: #E8EAF6; color: #283593; }
+    .method-bid        { background: #FFF3E0; color: #E65100; }
+    .method-simple     { background: #F3E5F5; color: #6A1B9A; }
+    .method-nomination { background: #E0F2F1; color: #00695C; }
+    .method-other      { background: #ECEFF1; color: #455A64; }
+
+    /* 要件充足バッジ */
+    .card-requirements {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 8px;
+    }
+    .req-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      padding: 2px 8px;
+      border-radius: 3px;
+      font-size: 11px;
+      font-weight: bold;
+    }
+    .req-ok    { background: #C8E6C9; color: #2E7D32; }
+    .req-check { background: #FFF9C4; color: #F57F17; }
+    .req-ng    { background: #FFCDD2; color: #C62828; }
+    .req-na    { background: #EEEEEE; color: #999; }
+    .req-clear {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 10px;
+      border-radius: 3px;
+      font-size: 11px;
+      font-weight: bold;
+      background: #1B5E20;
+      color: #fff;
+    }
+
+    /* 日程行 */
+    .card-dates {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      flex-wrap: wrap;
+      font-size: 12px;
+      color: #555;
+      margin-bottom: 6px;
+    }
+    .date-item { white-space: nowrap; }
+    .date-label { color: #999; }
+    .date-value { font-weight: bold; }
+    .date-past { color: #999; text-decoration: line-through; }
+
+    .card-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .card-footer-left {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .card-dept {
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 3px;
+      background: #E8EAF6;
+      color: #283593;
+      font-weight: bold;
+    }
+    .card-person { font-size: 12px; color: #555; }
+
+    .card-memo {
+      font-size: 12px;
+      color: #666;
+      background: #FAFAFA;
+      padding: 6px 10px;
+      border-radius: 4px;
+      margin-top: 8px;
+      border-left: 3px solid #DDD;
+      line-height: 1.5;
+    }
+
+    .card-region {
+      display: inline-block;
+      padding: 1px 8px;
+      border-radius: 3px;
+      font-size: 11px;
+      font-weight: bold;
+      background: #ECEFF1;
+      color: #455A64;
+    }
+
+    .card-field {
+      display: inline-block;
+      padding: 1px 8px;
+      border-radius: 3px;
+      font-size: 11px;
+      background: #FFF8E1;
+      color: #795548;
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 60px 24px;
+      color: #999;
+      font-size: 14px;
+    }
+
+    @media (max-width: 700px) {
+      .header { flex-direction: column; gap: 8px; align-items: flex-start; }
+      .summary-bar { gap: 8px; }
+      .controls { gap: 8px; }
+      .card-container { padding: 12px; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ヘッダー -->
+<div class="header">
+  <h1>公募案件スクリーニング｜エブリプラン</h1>
+  <div class="header-right">
+    <div class="header-sub">営業会議（毎週月曜 9:00-10:00）用<br>判断ダッシュボード v2</div>
+    <a class="gantt-link" href="https://motoki-design.github.io/proposal-schedule/" target="_blank">
+      ガントチャート
+    </a>
+    <a class="sheet-link" href="#" id="sheetLink" target="_blank">
+      スプレッドシート編集
+    </a>
+  </div>
+</div>
+
+<!-- サマリーバー -->
+<div class="summary-bar" id="summaryBar">
+  <div class="summary-chip chip-all active" data-filter="all">
+    全件 <span class="chip-count" id="countAll">-</span>
+  </div>
+  <div class="summary-chip chip-undecided" data-filter="未判断">
+    未判断 <span class="chip-count" id="countUndecided">-</span>
+  </div>
+  <div class="summary-chip chip-go" data-filter="参加">
+    参加 <span class="chip-count" id="countGo">-</span>
+  </div>
+  <div class="summary-chip chip-watch" data-filter="保留中">
+    保留中 <span class="chip-count" id="countWatch">-</span>
+  </div>
+  <div class="summary-chip chip-skip" data-filter="回避">
+    回避 <span class="chip-count" id="countSkip">-</span>
+  </div>
+</div>
+
+<!-- コントロールバー -->
+<div class="controls">
+  <label>年度
+    <select id="filterYear">
+      <option value="R8" selected>R8</option>
+      <option value="R7">R7</option>
+      <option value="all">全年度</option>
+    </select>
+  </label>
+  <label>地域
+    <select id="filterRegion">
+      <option value="all">全地域</option>
+      <option value="島根県">島根県</option>
+      <option value="鳥取県">鳥取県</option>
+      <option value="岡山県">岡山県</option>
+      <option value="広島県">広島県</option>
+      <option value="山口県">山口県</option>
+      <option value="中国管内">中国管内</option>
+      <option value="四国管内">四国管内</option>
+      <option value="九州管内">九州管内</option>
+      <option value="その他">その他</option>
+    </select>
+  </label>
+  <label>方式
+    <select id="filterMethod">
+      <option value="all">全方式</option>
+      <option value="公募プロポ">公募プロポ</option>
+      <option value="指名プロポ">指名プロポ</option>
+      <option value="一般競争">一般競争</option>
+      <option value="簡易型">簡易型一般競争</option>
+      <option value="総合入札">総合入札</option>
+      <option value="競争的資金">競争的資金</option>
+    </select>
+  </label>
+  <label>並び替え
+    <select id="sortOrder">
+      <option value="deadline">締切が近い順</option>
+      <option value="row-desc">掲載が新しい順</option>
+      <option value="amount-desc">金額が大きい順</option>
+    </select>
+  </label>
+  <label style="display:inline-flex;align-items:center;gap:4px;cursor:pointer;">
+    <input type="checkbox" id="showFinished">終了・期日不明も表示
+  </label>
+  <button class="btn" onclick="loadCSV()">再読込</button>
+  <span class="status-msg" id="statusMsg">読み込み中...</span>
+</div>
+
+<!-- カード一覧 -->
+<div class="card-container" id="cardContainer">
+  <div class="empty-state">データを読み込んでいます...</div>
+</div>
+
+<!-- パスワードゲート -->
+<div id="lockOverlay" style="position:fixed;inset:0;background:#f4f6f8;z-index:1000;
+     display:flex;align-items:center;justify-content:center;">
+  <div style="background:#fff;border:1px solid #ddd;border-radius:10px;padding:32px 36px;
+       box-shadow:0 4px 20px rgba(0,0,0,.08);max-width:360px;width:90%;text-align:center;">
+    <div style="font-size:15px;font-weight:700;margin-bottom:4px;">公募案件スクリーニング</div>
+    <div style="font-size:12px;color:#888;margin-bottom:18px;">社内共有パスワードを入力してください</div>
+    <input type="password" id="pwInput" placeholder="パスワード" autocomplete="current-password"
+           style="width:100%;box-sizing:border-box;padding:9px 12px;font-size:14px;
+                  border:1px solid #ccc;border-radius:6px;margin-bottom:10px;">
+    <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#666;margin-bottom:14px;cursor:pointer;">
+      <input type="checkbox" id="pwRemember" checked>このブラウザで記憶する
+    </label>
+    <button id="pwSubmit" class="btn" style="width:100%;padding:9px;font-size:14px;">開く</button>
+    <div id="pwError" style="color:#c0392b;font-size:12px;margin-top:10px;visibility:hidden;">
+      パスワードが違います
+    </div>
+  </div>
+</div>
+
+<script>
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 定数：SSチーム公募情報シート「公募情報の整理フォーマット-2」一覧表
+// ヘッダー行＝シート3行目。gviz CSVエンドポイントで range=A3:AJ を取得
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// シートIDはパスワード（PBKDF2-SHA256 10万回 → AES-256-GCM）で暗号化して埋め込み。
+// パスワード変更時は暗号文を再生成して SALT/IV/CT を差し替える（運用フロー_v1.md 参照）
+const ENC = {
+  salt: 'Mhs0Zu1iPipzV9afWuoFNg==',
+  iv:   '86KC1+tP2F2ADRIK',
+  ct:   'prwEsdv9FuXucUHSwcMfXH9FJOoDAFlgI3vjZLa+FzCXH/SaQAx9Fu+5lHIyrdbrN/cQmRD7YWkBPJvR',
+};
+let CSV_URL = null; // unlock() 成功後にセットされる
+
+function b64ToBytes(b64) {
+  return Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+}
+
+async function decryptSheetId(password) {
+  const enc = new TextEncoder();
+  const baseKey = await crypto.subtle.importKey('raw', enc.encode(password), 'PBKDF2', false, ['deriveKey']);
+  const key = await crypto.subtle.deriveKey(
+    { name: 'PBKDF2', salt: b64ToBytes(ENC.salt), iterations: 100000, hash: 'SHA-256' },
+    baseKey, { name: 'AES-GCM', length: 256 }, false, ['decrypt']);
+  const plain = await crypto.subtle.decrypt(
+    { name: 'AES-GCM', iv: b64ToBytes(ENC.iv) }, key, b64ToBytes(ENC.ct));
+  return new TextDecoder().decode(plain);
+}
+
+async function tryUnlock(password) {
+  let sheetId;
+  try {
+    sheetId = await decryptSheetId(password);
+  } catch (e) {
+    return false; // パスワード不一致（GCM認証エラー）
+  }
+  CSV_URL = 'https://docs.google.com/spreadsheets/d/' + sheetId +
+    '/gviz/tq?tqx=out:csv&sheet=' + encodeURIComponent('一覧表') + '&range=A3:AJ';
+  document.getElementById('sheetLink').href =
+    'https://docs.google.com/spreadsheets/d/' + sheetId + '/edit';
+  document.getElementById('lockOverlay').style.display = 'none';
+  loadCSV();
+  return true;
+}
+
+function initLock() {
+  const overlay = document.getElementById('lockOverlay');
+  const saved = localStorage.getItem('screeningPw');
+  if (saved) {
+    tryUnlock(saved).then(ok => {
+      if (!ok) { localStorage.removeItem('screeningPw'); overlay.style.display = 'flex'; }
+    });
+    return;
+  }
+  overlay.style.display = 'flex';
+  document.getElementById('pwInput').focus();
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  const submit = async () => {
+    const pw = document.getElementById('pwInput').value;
+    const ok = await tryUnlock(pw);
+    if (ok) {
+      if (document.getElementById('pwRemember').checked) localStorage.setItem('screeningPw', pw);
+      document.getElementById('pwError').style.visibility = 'hidden';
+    } else {
+      document.getElementById('pwError').style.visibility = 'visible';
+    }
+  };
+  document.getElementById('pwSubmit').addEventListener('click', submit);
+  document.getElementById('pwInput').addEventListener('keydown', e => { if (e.key === 'Enter') submit(); });
+});
+
+// 実シートの列名（列ズレしたときはここを直す）
+const COL = {
+  judge:   '参加判断',                                   // A 〇：参加/△：保留中/×：回避/ー：中止
+  result:  '結果',                                       // B
+  year:    '年度',                                       // C R8等
+  month:   '年/月',                                      // D 26/7等
+  memo:    '参加及び提案期限、判断理由・競合他社等',      // E
+  source:  '情報提供者',                                 // F
+  person:  '担当者（参加の場合）',                        // G
+  title:   '業務名',                                     // H
+  region:  '対象地域',                                   // I
+  issuer:  '発注機関',                                   // J
+  method:  '方式',                                       // K
+  field:   '業務分野',                                   // L
+  amount:  '金額（千円）',                                // M ※千円単位
+  dlQ:     '質問締切',                                   // Z
+  dlEntry: '参加表明期限',                                // AA
+  dlSubmit:'企画提出期限',                                // AB
+  dlPres:  'プレゼン日',                                  // AC
+  reqJ:    '実績充足',                                   // AD
+  reqB:    '拠点充足',                                   // AE
+  reqT:    '技術者充足',                                  // AF
+  reqS:    '資格充足',                                   // AG
+  judgeDate:'判断日',                                    // AH
+  planNo:  '企画番号',                                   // AI
+  url:     'URL',                                        // AJ
+};
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 状態
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+let allData = [];
+let activeStatusFilter = 'all';
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 初期化
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('.summary-chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      activeStatusFilter = chip.dataset.filter;
+      document.querySelectorAll('.summary-chip').forEach(c => c.classList.remove('active'));
+      chip.classList.add('active');
+      renderCards();
+    });
+  });
+  ['filterYear', 'filterRegion', 'filterMethod', 'sortOrder', 'showFinished'].forEach(id => {
+    document.getElementById(id).addEventListener('change', () => { updateSummary(); renderCards(); });
+  });
+  initLock();
+});
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// CSV読み込み
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+function loadCSV() {
+  if (!CSV_URL) return; // 未解錠
+  document.getElementById('statusMsg').textContent = '読み込み中...';
+  Papa.parse(CSV_URL, {
+    download: true,
+    header: true,
+    skipEmptyLines: true,
+    complete: (results) => {
+      // 業務名のある行のみ・元の行順を保持
+      allData = results.data
+        .map((row, i) => ({ ...row, _rowIndex: i }))
+        .filter(row => (row[COL.title] || '').trim() !== '');
+      document.getElementById('statusMsg').textContent =
+        `${allData.length}件読み込み（${new Date().toLocaleTimeString('ja-JP')}）`;
+      updateSummary();
+      renderCards();
+    },
+    error: (err) => {
+      document.getElementById('statusMsg').textContent = 'CSV読込エラー: ' + err.message;
+      document.getElementById('cardContainer').innerHTML =
+        '<div class="empty-state">CSVの読み込みに失敗しました。時間をおいて「再読込」を押してください。</div>';
+    }
+  });
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// ユーティリティ
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+function parseDate(s) {
+  if (!s) return null;
+  const parts = String(s).replace(/[年月]/g, '/').replace(/日/g, '').split('/');
+  if (parts.length < 2) return null;
+  let y = parseInt(parts[0], 10);
+  const m = parseInt(parts[1], 10) - 1;
+  const d = parts.length >= 3 ? parseInt(parts[2], 10) : 1;
+  if (isNaN(y) || isNaN(m)) return null;
+  if (y < 100) y += 2000; // '26/7' 形式（2桁年）対応
+  return new Date(y, m, d);
+}
+
+function formatDate(s) {
+  const d = parseDate(s);
+  if (!d) return '';
+  return `${d.getMonth() + 1}/${d.getDate()}`;
+}
+
+function daysUntil(dateStr) {
+  const d = parseDate(dateStr);
+  if (!d) return Infinity;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return Math.ceil((d - today) / (1000 * 60 * 60 * 24));
+}
+
+function getNextDeadline(row) {
+  const fields = [
+    { key: COL.dlQ, label: '質問' },
+    { key: COL.dlEntry, label: '参加表明' },
+    { key: COL.dlSubmit, label: '提出' },
+  ];
+  let closest = null, closestDays = Infinity, closestLabel = '';
+  for (const f of fields) {
+    const v = row[f.key];
+    if (!v) continue;
+    const days = daysUntil(v);
+    if (days >= 0 && days < closestDays) {
+      closestDays = days; closest = v; closestLabel = f.label;
+    }
+  }
+  // 未来の締切がなければ最後の締切（期限切れ表示用）
+  if (!closest) {
+    for (const f of fields) {
+      const v = row[f.key];
+      if (!v) continue;
+      const days = daysUntil(v);
+      if (days < closestDays || closestDays === Infinity) {
+        closestDays = days; closest = v; closestLabel = f.label;
+      }
+    }
+  }
+  return { date: closest, days: closestDays, label: closestLabel };
+}
+
+// A列「参加判断」の正規化：未判断/参加/保留中/回避/中止
+function normalizeStatus(s) {
+  if (!s) return '未判断';
+  const v = String(s).trim();
+  if (v === '') return '未判断';
+  if (v.includes('参加')) return '参加';
+  if (v.includes('保留')) return '保留中';
+  if (v.includes('回避')) return '回避';
+  if (v.includes('中止')) return '中止';
+  return '未判断';
+}
+
+// 金額は千円単位
+function formatAmount(s) {
+  if (!s) return '';
+  const n = parseFloat(String(s).replace(/[,，円]/g, ''));
+  if (isNaN(n) || n === 0) return '';
+  const man = n / 10; // 千円 → 万円
+  if (man >= 10000) return (man / 10000).toFixed(1).replace(/\.0$/, '') + '億円';
+  return Math.round(man).toLocaleString() + '万円';
+}
+
+function escapeHtml(s) {
+  if (!s) return '';
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 表示対象の判定（デフォルト非表示の条件）：
+//  ① 締切列（Z〜AC）の最終日が過去 → 終了として非表示
+//  ② 未判断で締切列（Z〜AC）が全て空 → 期日不明として非表示
+//     （判断済み＝参加/保留/回避/中止は締切がなくても表示する）
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+function isHiddenByDefault(row) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const dates = [COL.dlQ, COL.dlEntry, COL.dlSubmit, COL.dlPres]
+    .map(k => parseDate(row[k]))
+    .filter(d => d !== null);
+  if (dates.length > 0) {
+    const last = new Date(Math.max(...dates.map(d => d.getTime())));
+    return last < today; // 終了
+  }
+  return normalizeStatus(row[COL.judge]) === '未判断'; // 期日不明の未判断
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// フィルタ（ステータス以外）
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+function baseFiltered() {
+  const year = document.getElementById('filterYear').value;
+  const region = document.getElementById('filterRegion').value;
+  const method = document.getElementById('filterMethod').value;
+  const showFinished = document.getElementById('showFinished').checked;
+  return allData.filter(row => {
+    if (year !== 'all' && (row[COL.year] || '').trim() !== year) return false;
+    if (region !== 'all' && (row[COL.region] || '').trim() !== region) return false;
+    if (method !== 'all' && !(row[COL.method] || '').includes(method)) return false;
+    if (!showFinished && isHiddenByDefault(row)) return false;
+    return true;
+  });
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// サマリー更新（年度・地域・方式フィルタ適用後の集計）
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+function updateSummary() {
+  let cAll = 0, cUndecided = 0, cGo = 0, cSkip = 0, cWatch = 0;
+  baseFiltered().forEach(row => {
+    cAll++;
+    const st = normalizeStatus(row[COL.judge]);
+    if (st === '未判断') cUndecided++;
+    else if (st === '参加') cGo++;
+    else if (st === '回避' || st === '中止') cSkip++;
+    else if (st === '保留中') cWatch++;
+  });
+  document.getElementById('countAll').textContent = cAll;
+  document.getElementById('countUndecided').textContent = cUndecided;
+  document.getElementById('countGo').textContent = cGo;
+  document.getElementById('countSkip').textContent = cSkip;
+  document.getElementById('countWatch').textContent = cWatch;
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// フィルタ・ソート
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+function getFilteredData() {
+  let data = baseFiltered().filter(row => {
+    if (activeStatusFilter === 'all') return true;
+    const st = normalizeStatus(row[COL.judge]);
+    if (activeStatusFilter === '回避') return st === '回避' || st === '中止';
+    return st === activeStatusFilter;
+  });
+
+  const sort = document.getElementById('sortOrder').value;
+  data.sort((a, b) => {
+    if (sort === 'deadline') {
+      // 未判断を先に、その中で締切が近い順。締切なしは行の新しい順で後ろへ
+      const sa = normalizeStatus(a[COL.judge]) === '未判断' ? 0 : 1;
+      const sb = normalizeStatus(b[COL.judge]) === '未判断' ? 0 : 1;
+      if (sa !== sb) return sa - sb;
+      const da = getNextDeadline(a).days;
+      const db = getNextDeadline(b).days;
+      if (da !== db) return da - db;
+      return b._rowIndex - a._rowIndex;
+    } else if (sort === 'row-desc') {
+      return b._rowIndex - a._rowIndex;
+    } else if (sort === 'amount-desc') {
+      const na = parseFloat(String(a[COL.amount] || '0').replace(/[,，]/g, '')) || 0;
+      const nb = parseFloat(String(b[COL.amount] || '0').replace(/[,，]/g, '')) || 0;
+      return nb - na;
+    }
+    return 0;
+  });
+
+  return data;
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// カード描画
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+function renderCards() {
+  const container = document.getElementById('cardContainer');
+  const data = getFilteredData();
+
+  if (data.length === 0) {
+    container.innerHTML = '<div class="empty-state">該当する案件がありません</div>';
+    return;
+  }
+  container.innerHTML = data.map(row => buildCard(row)).join('');
+}
+
+function buildCard(row) {
+  const status = normalizeStatus(row[COL.judge]);
+  const deadline = getNextDeadline(row);
+  const isUrgent = status === '未判断' && deadline.days >= 0 && deadline.days <= 7;
+
+  let cardClass = 'card ';
+  if (isUrgent) cardClass += 'card-urgent';
+  else if (status === '未判断') cardClass += 'card-undecided';
+  else if (status === '参加') cardClass += 'card-go';
+  else if (status === '保留中') cardClass += 'card-watch';
+  else cardClass += 'card-skip';
+
+  let statusBadge = '';
+  if (isUrgent) statusBadge = '<span class="card-status status-urgent">要判断</span>';
+  else if (status === '未判断') statusBadge = '<span class="card-status status-undecided">未判断</span>';
+  else if (status === '参加') statusBadge = '<span class="card-status status-go">〇 参加</span>';
+  else if (status === '保留中') statusBadge = '<span class="card-status status-watch">△ 保留中</span>';
+  else if (status === '中止') statusBadge = '<span class="card-status status-skip">ー 中止</span>';
+  else statusBadge = '<span class="card-status status-skip">× 回避</span>';
+
+  let countdownBadge = '';
+  if (deadline.date) {
+    if (deadline.days < 0) {
+      countdownBadge = `<span class="card-countdown countdown-expired">期限切れ</span>`;
+    } else if (deadline.days === 0) {
+      countdownBadge = `<span class="card-countdown countdown-urgent">本日締切（${escapeHtml(deadline.label)}）</span>`;
+    } else if (deadline.days <= 3) {
+      countdownBadge = `<span class="card-countdown countdown-urgent">残${deadline.days}日（${escapeHtml(deadline.label)}）</span>`;
+    } else if (deadline.days <= 7) {
+      countdownBadge = `<span class="card-countdown countdown-soon">残${deadline.days}日（${escapeHtml(deadline.label)}）</span>`;
+    } else {
+      countdownBadge = `<span class="card-countdown countdown-ok">残${deadline.days}日</span>`;
+    }
+  }
+
+  const title = escapeHtml(row[COL.title] || '（業務名なし）');
+  const url = (row[COL.url] || '').trim();
+  const titleHtml = url && /^https?:\/\//.test(url)
+    ? `<a href="${escapeHtml(url)}" target="_blank">${title}</a>`
+    : title;
+
+  const region = row[COL.region] || '';
+  const issuer = escapeHtml(row[COL.issuer] || '');
+  const field = escapeHtml((row[COL.field] || '').replace(/^\d+\./, ''));
+  const amount = formatAmount(row[COL.amount]);
+  const method = (row[COL.method] || '').trim();
+  let methodClass = 'method-other';
+  if (method.includes('プロポ')) methodClass = 'method-proposal';
+  else if (method.includes('簡易')) methodClass = 'method-simple';
+  else if (method.includes('一般') || method.includes('総合')) methodClass = 'method-bid';
+  else if (method.includes('指名')) methodClass = 'method-nomination';
+
+  // 要件充足バッジ
+  const reqFields = [
+    { key: COL.reqJ, label: '実績' },
+    { key: COL.reqB, label: '拠点' },
+    { key: COL.reqT, label: '技術者' },
+    { key: COL.reqS, label: '資格' },
+  ];
+  let reqBadges = '';
+  let allOk = true;
+  let hasAnyReq = false;
+  reqFields.forEach(f => {
+    const v = (row[f.key] || '').trim();
+    let cls = 'req-na';
+    let symbol = '−';
+    if (v === '○' || v === '〇') { cls = 'req-ok'; symbol = '○'; hasAnyReq = true; }
+    else if (v === '△') { cls = 'req-check'; symbol = '△'; allOk = false; hasAnyReq = true; }
+    else if (v === '×') { cls = 'req-ng'; symbol = '×'; allOk = false; hasAnyReq = true; }
+    else if (v === '−' || v === 'ー' || v === '-') { cls = 'req-na'; symbol = '−'; hasAnyReq = true; }
+    else { allOk = false; }
+    reqBadges += `<span class="req-badge ${cls}">${f.label}${symbol}</span>`;
+  });
+  if (allOk && hasAnyReq) {
+    reqBadges += '<span class="req-clear">要件クリア</span>';
+  }
+
+  // 日程
+  const dateFields = [
+    { key: COL.dlQ, label: '質問' },
+    { key: COL.dlEntry, label: '参加表明' },
+    { key: COL.dlSubmit, label: '提出' },
+    { key: COL.dlPres, label: 'プレゼン' },
+  ];
+  let datesHtml = '';
+  dateFields.forEach(f => {
+    const v = row[f.key];
+    if (!v) return;
+    const d = daysUntil(v);
+    const pastClass = d < 0 ? ' date-past' : '';
+    datesHtml += `<span class="date-item${pastClass}"><span class="date-label">${f.label}:</span> <span class="date-value">${formatDate(v)}</span></span>`;
+  });
+
+  const person = escapeHtml(row[COL.person] || '');
+  const source = escapeHtml(row[COL.source] || '');
+  const planNo = escapeHtml(row[COL.planNo] || '');
+  const judgeDate = formatDate(row[COL.judgeDate]);
+  const memo = escapeHtml(row[COL.memo] || '');
+
+  return `
+    <div class="${cardClass}">
+      <div class="card-header">
+        ${statusBadge}
+        ${countdownBadge}
+        <div class="card-title">${titleHtml}</div>
+      </div>
+      <div class="card-meta">
+        ${region ? `<span class="card-region">${escapeHtml(region)}</span>` : ''}
+        ${issuer ? `<span class="card-meta-item">${issuer}</span>` : ''}
+        ${method ? `<span class="card-method ${methodClass}">${escapeHtml(method)}</span>` : ''}
+        ${field ? `<span class="card-field">${field}</span>` : ''}
+        ${amount ? `<span class="card-amount">${escapeHtml(amount)}</span>` : ''}
+      </div>
+      <div class="card-requirements">
+        ${reqBadges}
+      </div>
+      <div class="card-dates">
+        ${datesHtml}
+      </div>
+      <div class="card-footer">
+        <div class="card-footer-left">
+          ${person ? `<span class="card-person">担当: ${person}</span>` : ''}
+          ${planNo ? `<span class="card-dept">企画${planNo}</span>` : ''}
+          ${judgeDate ? `<span class="card-person">判断日: ${judgeDate}</span>` : ''}
+          ${source ? `<span class="card-person" style="color:#999">情報: ${source}</span>` : ''}
+        </div>
+      </div>
+      ${memo ? `<div class="card-memo">${memo}</div>` : ''}
+    </div>
+  `;
+}
+</script>
+
+</body>
+</html>
