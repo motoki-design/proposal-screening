@@ -434,7 +434,9 @@ const ENC = {
   iv:   '86KC1+tP2F2ADRIK',
   ct:   'prwEsdv9FuXucUHSwcMfXH9FJOoDAFlgI3vjZLa+FzCXH/SaQAx9Fu+5lHIyrdbrN/cQmRD7YWkBPJvR',
 };
-let CSV_URL = null; // unlock() 成功後にセットされる
+let CSV_URL = null;      // unlock() 成功後にセットされる
+let SHEET_ID_DEC = null; // 復号済みシートID（行ジャンプリンク用）
+const SHEET_GID = 1426824018; // 「一覧表」タブ
 
 function b64ToBytes(b64) {
   return Uint8Array.from(atob(b64), c => c.charCodeAt(0));
@@ -458,8 +460,9 @@ async function tryUnlock(password) {
   } catch (e) {
     return false; // パスワード不一致（GCM認証エラー）
   }
+  SHEET_ID_DEC = sheetId;
   CSV_URL = 'https://docs.google.com/spreadsheets/d/' + sheetId +
-    '/gviz/tq?tqx=out:csv&sheet=' + encodeURIComponent('一覧表') + '&range=A3:AJ';
+    '/gviz/tq?tqx=out:csv&sheet=' + encodeURIComponent('一覧表') + '&range=A3:AL';
   document.getElementById('sheetLink').href =
     'https://docs.google.com/spreadsheets/d/' + sheetId + '/edit';
   document.getElementById('lockOverlay').style.display = 'none';
@@ -521,6 +524,8 @@ const COL = {
   judgeDate:'判断日',                                    // AH
   planNo:  '企画番号',                                   // AI
   url:     'URL',                                        // AJ
+  judgedBy:'判断者',                                     // AK（2026-07-03新設）
+  rowNum:  '行（自動）',                                 // AL 実シート行番号（ARRAYFORMULA）
 };
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -863,7 +868,15 @@ function buildCard(row) {
   const source = escapeHtml(row[COL.source] || '');
   const planNo = escapeHtml(row[COL.planNo] || '');
   const judgeDate = formatDate(row[COL.judgeDate]);
+  const judgedBy = escapeHtml((row[COL.judgedBy] || '').trim());
   const memo = escapeHtml(row[COL.memo] || '');
+
+  // シートの該当行へ直接ジャンプ（記入用）
+  const sheetRow = parseInt(row[COL.rowNum], 10);
+  const rowLink = (SHEET_ID_DEC && !isNaN(sheetRow))
+    ? `<a class="card-person" style="color:#1a73e8;text-decoration:none;" target="_blank"
+         href="https://docs.google.com/spreadsheets/d/${SHEET_ID_DEC}/edit#gid=${SHEET_GID}&range=A${sheetRow}">✎ シートで記入（${sheetRow}行）</a>`
+    : '';
 
   return `
     <div class="${cardClass}">
@@ -890,7 +903,9 @@ function buildCard(row) {
           ${person ? `<span class="card-person">担当: ${person}</span>` : ''}
           ${planNo ? `<span class="card-dept">企画${planNo}</span>` : ''}
           ${judgeDate ? `<span class="card-person">判断日: ${judgeDate}</span>` : ''}
+          ${judgedBy ? `<span class="card-person">判断者: ${judgedBy}</span>` : ''}
           ${source ? `<span class="card-person" style="color:#999">情報: ${source}</span>` : ''}
+          ${rowLink}
         </div>
       </div>
       ${memo ? `<div class="card-memo">${memo}</div>` : ''}
