@@ -269,6 +269,19 @@
     }
     .card-person { font-size: 12px; color: #555; }
 
+    /* 結果・結果通知日（2026-07 森田さん要望） */
+    .card-result {
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 3px;
+      background: #EDE7F6;
+      color: #4527A0;
+      font-weight: bold;
+    }
+    .card-result.result-await { background: #FCE4EC; color: #AD1457; }
+    .card-result.result-adopt { background: #C8E6C9; color: #1B5E20; }
+    .card-result.result-reject { background: #FFCDD2; color: #B71C1C; }
+
     .card-memo {
       font-size: 12px;
       color: #666;
@@ -320,7 +333,7 @@
 <div class="header">
   <h1>公募案件スクリーニング｜エブリプラン</h1>
   <div class="header-right">
-    <div class="header-sub">営業会議（毎週月曜 9:00-10:00）用<br>判断ダッシュボード v2</div>
+    <div class="header-sub">営業会議（毎週月曜 9:00-10:00）用<br>判断ダッシュボード v3</div>
     <a class="gantt-link" href="https://motoki-design.github.io/proposal-schedule/" target="_blank">
       ガントチャート
     </a>
@@ -462,7 +475,7 @@ async function tryUnlock(password) {
   }
   SHEET_ID_DEC = sheetId;
   CSV_URL = 'https://docs.google.com/spreadsheets/d/' + sheetId +
-    '/gviz/tq?tqx=out:csv&sheet=' + encodeURIComponent('一覧表') + '&range=A3:AL';
+    '/gviz/tq?tqx=out:csv&sheet=' + encodeURIComponent('一覧表') + '&range=A3:AM';
   document.getElementById('sheetLink').href =
     'https://docs.google.com/spreadsheets/d/' + sheetId + '/edit';
   document.getElementById('lockOverlay').style.display = 'none';
@@ -526,6 +539,7 @@ const COL = {
   url:     'URL',                                        // AJ
   judgedBy:'判断者',                                     // AK（2026-07-03新設）
   rowNum:  '行（自動）',                                 // AL 実シート行番号（ARRAYFORMULA）
+  resultDate:'結果通知日',                               // AM（2026-07-05 森田さん要望で新設）
 };
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -675,7 +689,9 @@ function escapeHtml(s) {
 function isHiddenByDefault(row) {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  const dates = [COL.dlQ, COL.dlEntry, COL.dlSubmit, COL.dlPres]
+  // 結果通知日(AM)も日付集合に含める＝結果通知が未来の「結果待ち」案件は表示し続ける
+  // （森田さん要望：結果通知日を追える。通知日を過ぎたら通常どおり非表示になる）
+  const dates = [COL.dlQ, COL.dlEntry, COL.dlSubmit, COL.dlPres, COL.resultDate]
     .map(k => parseDate(row[k]))
     .filter(d => d !== null);
   if (dates.length > 0) {
@@ -871,6 +887,27 @@ function buildCard(row) {
   const judgedBy = escapeHtml((row[COL.judgedBy] || '').trim());
   const memo = escapeHtml(row[COL.memo] || '');
 
+  // 結果（B列）と結果通知日（AM列）── 森田さん要望
+  const resultRaw = (row[COL.result] || '').trim();
+  const result = escapeHtml(resultRaw);
+  const resultDateStr = (row[COL.resultDate] || '').trim();
+  const resultDateFmt = formatDate(resultDateStr);
+  let resultHtml = '';
+  if (resultRaw) {
+    // 結果が判明：採択＝緑、不採択/×＝赤、その他＝紫
+    let rcls = '';
+    // 「不採択」は「採択」を含むため、否定側を先に判定する
+    if (/不採択|×|落選|失注|見送/.test(resultRaw)) rcls = ' result-reject';
+    else if (/採択|受注|○|〇/.test(resultRaw)) rcls = ' result-adopt';
+    const dateSuffix = resultDateFmt ? `（通知 ${resultDateFmt}）` : '';
+    resultHtml = `<span class="card-result${rcls}">結果: ${result}${dateSuffix}</span>`;
+  } else if (resultDateStr) {
+    // 結果未記入だが通知日あり＝結果待ち
+    const rd = daysUntil(resultDateStr);
+    const suffix = rd >= 0 ? `（残${rd}日）` : '（結果待ち）';
+    resultHtml = `<span class="card-result result-await">結果通知 ${resultDateFmt}${suffix}</span>`;
+  }
+
   // シートの該当行へ直接ジャンプ（記入用）
   const sheetRow = parseInt(row[COL.rowNum], 10);
   const rowLink = (SHEET_ID_DEC && !isNaN(sheetRow))
@@ -900,6 +937,7 @@ function buildCard(row) {
       </div>
       <div class="card-footer">
         <div class="card-footer-left">
+          ${resultHtml}
           ${person ? `<span class="card-person">担当: ${person}</span>` : ''}
           ${planNo ? `<span class="card-dept">企画${planNo}</span>` : ''}
           ${judgeDate ? `<span class="card-person">判断日: ${judgeDate}</span>` : ''}
