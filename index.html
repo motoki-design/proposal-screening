@@ -704,9 +704,20 @@ function escapeHtml(s) {
 //  ② 未判断で締切列（Z〜AC）が全て空 → 期日不明として非表示
 //     （判断済み＝参加/保留/回避/中止は締切がなくても表示する）
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 参加表明期限（AA）が過去＝もう参加できない（表明しないと提出資格がない）
+function isEntryClosed(row) {
+  const d = parseDate(row[COL.dlEntry]);
+  if (!d) return false;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return d < today;
+}
+
 function isHiddenByDefault(row) {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
+  // 未判断のまま参加表明期限が過ぎた案件＝参加不可（機会を逃した）→ 既定で非表示
+  if (normalizeStatus(row[COL.judge]) === '未判断' && isEntryClosed(row)) return true;
   // 結果通知日(AM)も日付集合に含める＝結果通知が未来の「結果待ち」案件は表示し続ける
   // （森田さん要望：結果通知日を追える。通知日を過ぎたら通常どおり非表示になる）
   const dates = [COL.dlQ, COL.dlEntry, COL.dlSubmit, COL.dlPres, COL.resultDate]
@@ -808,17 +819,21 @@ function renderCards() {
 function buildCard(row) {
   const status = normalizeStatus(row[COL.judge]);
   const deadline = getNextDeadline(row);
-  const isUrgent = status === '未判断' && deadline.days >= 0 && deadline.days <= 7;
+  // 未判断でも参加表明期限が過ぎていれば参加不可（提出日が未来でも応募できない）
+  const missed = status === '未判断' && isEntryClosed(row);
+  const isUrgent = status === '未判断' && !missed && deadline.days >= 0 && deadline.days <= 7;
 
   let cardClass = 'card ';
-  if (isUrgent) cardClass += 'card-urgent';
+  if (missed) cardClass += 'card-skip';
+  else if (isUrgent) cardClass += 'card-urgent';
   else if (status === '未判断') cardClass += 'card-undecided';
   else if (status === '参加') cardClass += 'card-go';
   else if (status === '保留中') cardClass += 'card-watch';
   else cardClass += 'card-skip';
 
   let statusBadge = '';
-  if (isUrgent) statusBadge = '<span class="card-status status-urgent">要判断</span>';
+  if (missed) statusBadge = '<span class="card-status status-skip">参加不可</span>';
+  else if (isUrgent) statusBadge = '<span class="card-status status-urgent">要判断</span>';
   else if (status === '未判断') statusBadge = '<span class="card-status status-undecided">未判断</span>';
   else if (status === '参加') statusBadge = '<span class="card-status status-go">〇 参加</span>';
   else if (status === '保留中') statusBadge = '<span class="card-status status-watch">△ 保留中</span>';
@@ -826,7 +841,9 @@ function buildCard(row) {
   else statusBadge = '<span class="card-status status-skip">× 回避</span>';
 
   let countdownBadge = '';
-  if (deadline.date) {
+  if (missed) {
+    countdownBadge = `<span class="card-countdown countdown-expired">表明期限切れ（${escapeHtml(formatDate(row[COL.dlEntry]))}）</span>`;
+  } else if (deadline.date) {
     if (deadline.days < 0) {
       countdownBadge = `<span class="card-countdown countdown-expired">期限切れ</span>`;
     } else if (deadline.days === 0) {
