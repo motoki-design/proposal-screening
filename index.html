@@ -293,6 +293,23 @@
       line-height: 1.5;
     }
 
+    /* サイボウズ判断メモ（2026-07 新設） */
+    .card-cybozu {
+      font-size: 12px;
+      color: #1565C0;
+      background: #E7F1FB;
+      padding: 6px 10px;
+      border-radius: 4px;
+      margin-top: 8px;
+      border-left: 3px solid #1976D2;
+      line-height: 1.5;
+    }
+    .card-cybozu .cybozu-label {
+      font-weight: bold;
+      margin-right: 6px;
+      opacity: 0.9;
+    }
+
     .card-region {
       display: inline-block;
       padding: 1px 8px;
@@ -475,7 +492,7 @@ async function tryUnlock(password) {
   }
   SHEET_ID_DEC = sheetId;
   CSV_URL = 'https://docs.google.com/spreadsheets/d/' + sheetId +
-    '/gviz/tq?tqx=out:csv&sheet=' + encodeURIComponent('一覧表') + '&range=A3:AM';
+    '/gviz/tq?tqx=out:csv&sheet=' + encodeURIComponent('一覧表') + '&range=A3:AN';
   document.getElementById('sheetLink').href =
     'https://docs.google.com/spreadsheets/d/' + sheetId + '/edit';
   document.getElementById('lockOverlay').style.display = 'none';
@@ -540,6 +557,7 @@ const COL = {
   judgedBy:'判断者',                                     // AK（2026-07-03新設）
   rowNum:  '行（自動）',                                 // AL 実シート行番号（ARRAYFORMULA）
   resultDate:'結果通知日',                               // AM（2026-07-05 森田さん要望で新設）
+  cybozuMemo:'サイボウズ判断メモ',                        // AN（2026-07-05 新設：判断コメント要旨・日付・書込者）
 };
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -886,6 +904,7 @@ function buildCard(row) {
   const judgeDate = formatDate(row[COL.judgeDate]);
   const judgedBy = escapeHtml((row[COL.judgedBy] || '').trim());
   const memo = escapeHtml(row[COL.memo] || '');
+  const cybozuMemo = escapeHtml((row[COL.cybozuMemo] || '').trim());
 
   // 結果（B列）と結果通知日（AM列）── 森田さん要望
   const resultRaw = (row[COL.result] || '').trim();
@@ -951,6 +970,7 @@ function buildCard(row) {
           ${rowLink}
         </div>
       </div>
+      ${cybozuMemo ? `<div class="card-cybozu"><span class="cybozu-label">💬 サイボウズ判断メモ</span>${cybozuMemo}</div>` : ''}
       ${memo ? `<div class="card-memo">${memo}</div>` : ''}
     </div>
   `;
