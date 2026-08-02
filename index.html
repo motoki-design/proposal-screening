@@ -670,16 +670,24 @@ function getNextDeadline(row) {
   return { date: closest, days: closestDays, label: closestLabel };
 }
 
+// AI列（企画番号）に5桁番号があるか
+function hasPlanNo(row) {
+  const v = (row[COL.planNo] || '').trim();
+  return /^\d{5}$/.test(v);
+}
+
 // A列「参加判断」の正規化：未判断/参加/保留中/回避/中止
-function normalizeStatus(s) {
-  if (!s) return '未判断';
+// F3: AI列に企画番号がある未判断/保留行は「採番済み」扱い
+function normalizeStatus(s, row) {
+  if (!s) s = '';
   const v = String(s).trim();
-  if (v === '') return '未判断';
-  if (v.includes('参加')) return '参加';
-  if (v.includes('保留')) return '保留中';
-  if (v.includes('回避')) return '回避';
-  if (v.includes('中止')) return '中止';
-  return '未判断';
+  const base = v.includes('参加') ? '参加'
+    : v.includes('保留') ? '保留中'
+    : v.includes('回避') ? '回避'
+    : v.includes('中止') ? '中止'
+    : '未判断';
+  if ((base === '未判断' || base === '保留中') && row && hasPlanNo(row)) return '参加';
+  return base;
 }
 
 // 金額は千円単位
@@ -717,7 +725,7 @@ function isHiddenByDefault(row) {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   // 未判断のまま参加表明期限が過ぎた案件＝参加不可（機会を逃した）→ 既定で非表示
-  if (normalizeStatus(row[COL.judge]) === '未判断' && isEntryClosed(row)) return true;
+  if (normalizeStatus(row[COL.judge], row) === '未判断' && isEntryClosed(row)) return true;
   // 結果通知日(AM)も日付集合に含める＝結果通知が未来の「結果待ち」案件は表示し続ける
   // （森田さん要望：結果通知日を追える。通知日を過ぎたら通常どおり非表示になる）
   const dates = [COL.dlQ, COL.dlEntry, COL.dlSubmit, COL.dlPres, COL.resultDate]
@@ -727,7 +735,7 @@ function isHiddenByDefault(row) {
     const last = new Date(Math.max(...dates.map(d => d.getTime())));
     return last < today; // 終了
   }
-  return normalizeStatus(row[COL.judge]) === '未判断'; // 期日不明の未判断
+  return normalizeStatus(row[COL.judge], row) === '未判断'; // 期日不明の未判断
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -754,7 +762,7 @@ function updateSummary() {
   let cAll = 0, cUndecided = 0, cGo = 0, cSkip = 0, cWatch = 0;
   baseFiltered().forEach(row => {
     cAll++;
-    const st = normalizeStatus(row[COL.judge]);
+    const st = normalizeStatus(row[COL.judge], row);
     if (st === '未判断') cUndecided++;
     else if (st === '参加') cGo++;
     else if (st === '回避' || st === '中止') cSkip++;
@@ -773,7 +781,7 @@ function updateSummary() {
 function getFilteredData() {
   let data = baseFiltered().filter(row => {
     if (activeStatusFilter === 'all') return true;
-    const st = normalizeStatus(row[COL.judge]);
+    const st = normalizeStatus(row[COL.judge], row);
     if (activeStatusFilter === '回避') return st === '回避' || st === '中止';
     return st === activeStatusFilter;
   });
@@ -782,8 +790,8 @@ function getFilteredData() {
   data.sort((a, b) => {
     if (sort === 'deadline') {
       // 未判断を先に、その中で締切が近い順。締切なしは行の新しい順で後ろへ
-      const sa = normalizeStatus(a[COL.judge]) === '未判断' ? 0 : 1;
-      const sb = normalizeStatus(b[COL.judge]) === '未判断' ? 0 : 1;
+      const sa = normalizeStatus(a[COL.judge], a) === '未判断' ? 0 : 1;
+      const sb = normalizeStatus(b[COL.judge], b) === '未判断' ? 0 : 1;
       if (sa !== sb) return sa - sb;
       const da = getNextDeadline(a).days;
       const db = getNextDeadline(b).days;
@@ -817,7 +825,7 @@ function renderCards() {
 }
 
 function buildCard(row) {
-  const status = normalizeStatus(row[COL.judge]);
+  const status = normalizeStatus(row[COL.judge], row);
   const deadline = getNextDeadline(row);
   // 未判断でも参加表明期限が過ぎていれば参加不可（提出日が未来でも応募できない）
   const missed = status === '未判断' && isEntryClosed(row);
