@@ -848,11 +848,14 @@ function buildCard(row) {
   else if (status === '中止') statusBadge = '<span class="card-status status-skip">ー 中止</span>';
   else statusBadge = '<span class="card-status status-skip">× 回避</span>';
 
+  const decided = status === '参加' || status === '回避' || status === '中止';
   let countdownBadge = '';
   if (missed) {
     countdownBadge = `<span class="card-countdown countdown-expired">表明期限切れ（${escapeHtml(formatDate(row[COL.dlEntry]))}）</span>`;
   } else if (deadline.date) {
-    if (deadline.days < 0) {
+    if (deadline.days < 0 && decided) {
+      // 参加/回避/中止は判断済み — 過去締切バッジを出さない
+    } else if (deadline.days < 0) {
       countdownBadge = `<span class="card-countdown countdown-expired">期限切れ</span>`;
     } else if (deadline.days === 0) {
       countdownBadge = `<span class="card-countdown countdown-urgent">本日締切（${escapeHtml(deadline.label)}）</span>`;
